@@ -173,7 +173,9 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 
 //const socket = io(import.meta.env.VITE_API_URL);
 const socket = io(import.meta.env.VITE_API_URL, {
-    transports: ['websocket', 'polling'] // 優先使用 websocket
+    transports: ['websocket'], // 'websocket'
+    reconnection: true,
+    reconnectionAttempts: 5
 });
 const gameStarted = ref(false);
 const isEditing = ref(false);
