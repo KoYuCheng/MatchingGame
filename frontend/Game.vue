@@ -28,7 +28,11 @@
                 <div v-else class="editor-view">
                     <div class="editor-header">
                         <h3>教材清單編輯</h3>
-                        <el-link href="https://www.flaticon.com/" type="primary" target="_blank">素材庫(Flaticon)</el-link>
+                        <div>
+                            <el-link href="https://www.flaticon.com/" type="primary" target="_blank"
+                                style="margin-right: 15px;">素材庫</el-link>
+                            <el-button type="success" size="small" @click="helpDialogVisible = true">常用教材參考</el-button>
+                        </div>
                     </div>
 
                     <el-table :data="localGameData" style="width: 100%" border stripe>
@@ -67,6 +71,12 @@
                                 </div>
                             </template>
                         </el-table-column>
+                        <el-table-column label="操作" width="80" align="center">
+                            <template #default="scope">
+                                <el-button type="danger" icon="Delete" circle size="small"
+                                    :disabled="localGameData.length <= 5" @click="removeRow(scope.$index)" />
+                            </template>
+                        </el-table-column>
                         <!--<el-table-column label="圖片選擇">
                             <template #default="scope">
                                 <el-select v-model="scope.row.img" placeholder="選擇圖片" style="width: 100%">
@@ -80,9 +90,31 @@
                             </template>
                         </el-table-column>-->
                     </el-table>
+
+                    <div class="add-row-container" style="margin-top: 15px;">
+                        <el-button type="info" plain icon="Plus" @click="addRow" style="width: 100%; border-style: dashed;">
+                            新增題目 (目前共 {{ localGameData.length }} 題)
+                        </el-button>
+                    </div>
+
                     <div class="editor-footer">
                         <el-button type="primary" @click="isEditing = false">完成編輯</el-button>
                     </div>
+
+                    <el-dialog v-model="helpDialogVisible" title="常用教材圖片清單" width="500px">
+                        <el-table :data="presetMaterials" style="width: 100%">
+                            <el-table-column prop="word" label="名詞" width="100" />
+                            <el-table-column label="圖片網址">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.url" size="small" readonly>
+                                        <template #append>
+                                            <el-button @click="copyUrl(scope.row.url)">複製</el-button>
+                                        </template>
+                                    </el-input>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-dialog>
                 </div>
             </div>
 
@@ -139,7 +171,10 @@ import { ref, onMounted, computed } from 'vue';
 import { io } from 'socket.io-client';
 import { ElMessageBox, ElMessage } from 'element-plus';
 
-const socket = io(import.meta.env.VITE_API_URL);
+//const socket = io(import.meta.env.VITE_API_URL);
+const socket = io(import.meta.env.VITE_API_URL, {
+    transports: ['websocket', 'polling'] // 優先使用 websocket
+});
 const gameStarted = ref(false);
 const isEditing = ref(false);
 const role = ref('');
@@ -167,20 +202,83 @@ const getParamsFromUrl = () => {
     };
 };
 
+const helpDialogVisible = ref(false)
+// 準備好的常用名詞與圖片網址
+const presetMaterials = ref([
+    { word: '蘋果', url: 'https://cdn-icons-png.flaticon.com/512/415/415733.png' },
+    { word: '香蕉', url: 'https://cdn-icons-png.flaticon.com/512/2909/2909761.png' },
+    { word: '芒果', url: 'https://cdn-icons-png.flaticon.com/128/13523/13523334.png' },
+    { word: '蛋糕', url: 'https://cdn-icons-png.flaticon.com/128/9997/9997743.png' },
+    { word: 'Pizza', url: 'https://cdn-icons-png.flaticon.com/128/6978/6978255.png' },
+    { word: '大象', url: 'https://cdn-icons-png.flaticon.com/128/7743/7743300.png' },
+    { word: '貓', url: 'https://cdn-icons-png.flaticon.com/128/1998/1998592.png' },
+    { word: '狗', url: 'https://cdn-icons-png.flaticon.com/128/1998/1998627.png' },
+    { word: '桌子', url: 'https://cdn-icons-png.flaticon.com/128/15974/15974047.png' },
+    { word: '花', url: 'https://cdn-icons-png.flaticon.com/128/346/346167.png' },
+    { word: '紙', url: 'https://cdn-icons-png.flaticon.com/128/2541/2541984.png' },
+    { word: '卡片', url: 'https://cdn-icons-png.flaticon.com/128/9334/9334539.png' },
+    { word: '書', url: 'https://cdn-icons-png.flaticon.com/512/2232/2232688.png' },
+    { word: '筆', url: 'https://cdn-icons-png.flaticon.com/128/1250/1250925.png' },
+    { word: '車', url: 'https://cdn-icons-png.flaticon.com/128/3097/3097180.png' },
+    { word: '衣服', url: 'https://cdn-icons-png.flaticon.com/128/3746/3746120.png' },
+    { word: '裙子', url: 'https://cdn-icons-png.flaticon.com/128/1774/1774825.png' },
+    { word: '帽子', url: 'https://cdn-icons-png.flaticon.com/128/1974/1974214.png' },
+    { word: '襪子', url: 'https://cdn-icons-png.flaticon.com/128/843/843877.png' },
 
+    // 繼續增加...
+])
 
-onMounted(() => {
+// 複製網址到剪貼簿的功能
+const copyUrl = (url) => {
+    navigator.clipboard.writeText(url).then(() => {
+        ElMessage({
+            message: '網址已複製！',
+            type: 'success',
+        })
+    })
+}
+
+onMounted(async () => {
 
     //const myRequestedRole = getRoleFromUrl();
     const { role: roleParam, room: roomID } = getParamsFromUrl();
 
-    let requestedRole = null;
-    if (roleParam === 'A') requestedRole = 'A';
-    else if (roleParam === 'B') requestedRole = 'B';
 
-    // 2. 連線時，告訴後端我想要的身份
-    // 修改 socket 初始化，或者連線後立刻 emit
-    socket.emit('join_with_role', { requestedRole, roomID });
+
+
+    let requestedRole = (roleParam || '').toUpperCase();
+    if (requestedRole !== 'A' && requestedRole !== 'B') requestedRole = null;
+
+    let userName = '';
+    try {
+        if (requestedRole === 'B') {
+            const { value: name } = await ElMessageBox.prompt('請輸入名字', '歡迎加入遊戲', {
+                confirmButtonText: '進入遊戲',
+                cancelButtonText: '匿名進入',
+                inputPlaceholder: '例如：王小明',
+                inputPattern: /\S+/,
+                inputErrorMessage: '名字不能為空'
+            });
+            userName = name || "匿名玩家";
+        } else if (requestedRole === 'A') {
+            userName = '老師';
+        } else {
+            userName = '訪客';
+        }
+    } catch {
+        userName = "匿名玩家";
+    }
+
+
+    const upperRole = roleParam ? roleParam.toUpperCase() : null;
+
+    if (upperRole === 'A') {
+        requestedRole = 'A';
+    } else if (upperRole === 'B') {
+        requestedRole = 'B';
+    }
+
+    socket.emit('join_with_role', { requestedRole, roomID, userName });
 
     socket.on('assigned_role', (assignedRole) => {
         role.value = assignedRole;
@@ -197,10 +295,11 @@ onMounted(() => {
     socket.on('match_success', async () => {
         const q = table.value.quantifierCard?.text || '';
         const n = table.value.nounCard?.noun || '';
+        const solver = table.value.nounCard?.playerName || '某個同學';
         const fullAnswer = `${q}${n}`;
 
         await ElMessageBox.alert(
-            `太棒了！正確答案就是：【${fullAnswer}】`,
+            `${solver} 配對成功！正確答案就是：【${fullAnswer}】`,
             '配對成功',
             {
                 type: 'success',
@@ -252,6 +351,27 @@ const handleRestart = () => {
         socket.emit('request_restart_game');
     }).catch(() => { });
 };
+
+const addRow = () => {
+    const newId = localGameData.value.length > 0
+        ? Math.max(...localGameData.value.map(item => item.id)) + 1
+        : 1;
+
+    localGameData.value.push({
+        id: newId,
+        quantifier: "",
+        noun: "",
+        img: ""
+    });
+
+    ElMessage.success('已新增一組題目欄位');
+};
+
+// 刪除指定索引的資料
+const removeRow = (index) => {
+    localGameData.value.splice(index, 1);
+};
+
 </script>
   
 <style scoped>
@@ -338,6 +458,7 @@ const handleRestart = () => {
     font-weight: bold;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     overflow: hidden;
+    position: relative;
 }
 
 .game-card .el-image {
@@ -408,6 +529,29 @@ const handleRestart = () => {
     height: 100%;
     font-size: 10px;
     color: #909399;
+}
+
+.player-name-tag {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 12px;
+    padding: 4px 0;
+    text-align: center;
+    font-weight: normal;
+}
+
+.teacher-tag {
+    background: rgba(245, 108, 108, 0.8);
+    /* 老師用紅色系 */
+}
+
+.student-tag {
+    background: rgba(103, 194, 58, 0.8);
+    /* 學生用綠色系 */
 }
 </style>
 

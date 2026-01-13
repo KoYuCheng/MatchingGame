@@ -9,11 +9,14 @@ app.use(cors());
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // 務必確認這與 Vue 執行的網址一致
-        methods: ["GET", "POST"]
-    }
+        // 這裡直接放您的 Vercel 前端網址
+        origin: "https://matching-game-tan.vercel.app",
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    // 強制允許所有傳輸協定
+    allowEIO3: true
 });
-
 // 細化的量詞數據
 /*const gameData = [
     { id: 1, quantifier: "一個", noun: "小孩", img: "/shinchun.webp" },
@@ -33,12 +36,13 @@ let rooms = {}; //新增房間概念
 io.on('connection', (socket) => {
     console.log('新玩家連線:', socket.id);
 
-    socket.on('join_with_role', ({ requestedRole, roomID }) => {
+    socket.on('join_with_role', ({ requestedRole, roomID, userName }) => {
 
         if (!roomID) return; // 沒給房間號碼不予處理
 
         socket.join(roomID); // Socket.io 的內建房間功能
         socket.roomID = roomID; // 把房間 ID 綁在 socket 物件上方便後續使用
+        socket.userName = userName;
 
         // 如果房間還不存在，初始化它
         if (!rooms[roomID]) {
@@ -57,7 +61,12 @@ io.on('connection', (socket) => {
             finalRole = hasTeacher ? 'B' : 'A';
         }
 
-        currentRoom.players.push({ id: socket.id, role: finalRole });
+        //currentRoom.players.push({ id: socket.id, role: finalRole });
+        currentRoom.players.push({
+            id: socket.id,
+            role: finalRole,
+            name: userName
+        });
         socket.emit('assigned_role', finalRole);
         console.log(`房間 [${roomID}] 玩家 ${socket.id} 身份: ${finalRole}`);
     });
@@ -136,8 +145,16 @@ io.on('connection', (socket) => {
         const currentRoom = rooms[roomID];
         if (!currentRoom) return;
 
-        if (data.role === 'A') currentRoom.table.quantifierCard = data.card;
-        else if (data.role === 'B') currentRoom.table.nounCard = data.card;
+        const playerName = socket.userName || "未知玩家";
+
+        if (data.role === 'A') {
+            currentRoom.table.quantifierCard = { ...data.card, playerName: "老師" };
+        }
+        else if (data.role === 'B') {
+            // 如果已經有學生出牌了，可以鎖定不讓別人出，直到清空
+            if (currentRoom.table.nounCard) return;
+            currentRoom.table.nounCard = { ...data.card, playerName: playerName };
+        }
 
         // 只廣播給同一個房間的人
         io.to(roomID).emit('update_table', currentRoom.table);
