@@ -242,6 +242,7 @@ const copyUrl = (url) => {
 
 onMounted(async () => {
 
+    console.log("當前後端連線位址:", import.meta.env.VITE_API_URL);
     //const myRequestedRole = getRoleFromUrl();
     const { role: roleParam, room: roomID } = getParamsFromUrl();
 
