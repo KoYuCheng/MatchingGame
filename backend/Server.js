@@ -10,7 +10,10 @@ const server = createServer(app);
 const io = new Server(server, {
     cors: {
         // 這裡直接放您的 Vercel 前端網址
-        origin: "https://matching-game-tan.vercel.app",
+        origin: [
+            "https://matching-game-tan.vercel.app",
+            "https://matching-game-l59ztopwl-koyuchengs-projects.vercel.app" // 截圖中的那個長網址
+        ],
         methods: ["GET", "POST"],
         credentials: true
     },

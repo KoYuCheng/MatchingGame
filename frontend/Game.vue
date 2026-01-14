@@ -173,9 +173,9 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 
 //const socket = io(import.meta.env.VITE_API_URL);
 const socket = io(import.meta.env.VITE_API_URL, {
-    transports: ['websocket'], // 'websocket'
-    reconnection: true,
-    reconnectionAttempts: 5
+    transports: ['websocket'],
+    withCredentials: true,
+    forceNew: true // 強制建立新連線，避免抓到舊的快取
 });
 const gameStarted = ref(false);
 const isEditing = ref(false);
