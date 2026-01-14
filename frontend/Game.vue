@@ -1,9 +1,32 @@
 <template>
     <div class="game-container">
-        <el-card class="main-card">
+        <el-card v-if="!currentRoomID" class="lobby-card">
+            <h2>歡迎來到量詞配對大戰</h2>
+            <p>請輸入房間號碼以開始遊戲：</p>
+            <el-input v-model="inputRoomID" placeholder="例如: 023" style="margin-bottom: 20px;">
+                <template #prepend>ROOM-</template>
+            </el-input>
+            <el-button type="primary" size="large" @click="joinAsTeacher" style="width: 100%">
+                我是老師，創建/進入房間
+            </el-button>
+        </el-card>
+
+        <el-card v-else class="main-card">
             <template #header>
-                <div class="header-content">
+                <!--<div class="header-content">
                     <h1 class="title">量詞配對大戰</h1>
+                    <el-tag :type="role === 'A' ? 'danger' : 'success'" effect="dark">
+                        {{ role === 'A' ? '老師 (出題者)' : '學生 (應答者)' }}
+                    </el-tag>
+                </div>-->
+                <div class="header-content">
+                    <div class="title-group">
+                        <h1 class="title">量詞配對大戰 (房號: {{ currentRoomID }})</h1>
+                        <el-button v-if="isHost" type="info" size="small" icon="Share" @click="copyStudentLink"
+                            style="margin-left: 10px;">
+                            複製學生連結
+                        </el-button>
+                    </div>
                     <el-tag :type="role === 'A' ? 'danger' : 'success'" effect="dark">
                         {{ role === 'A' ? '老師 (出題者)' : '學生 (應答者)' }}
                     </el-tag>
@@ -177,6 +200,9 @@ const socket = io(import.meta.env.VITE_API_URL, {
     withCredentials: true,
     forceNew: true // 強制建立新連線，避免抓到舊的快取
 });
+
+const inputRoomID = ref('');
+const currentRoomID = ref('');
 const gameStarted = ref(false);
 const isEditing = ref(false);
 const role = ref('');
@@ -192,9 +218,8 @@ const localGameData = ref([
     { id: 5, quantifier: "五本", noun: "書", img: "https://cdn-icons-png.flaticon.com/512/2232/2232688.png" }
 ]);
 
-const imageOptions = ref(['/shinchun.webp', '/tree.png', '/tree2.png', 'light.jpg', 'https://cdn-icons-png.flaticon.com/512/2122/2122458.png', 'https://cdn-icons-png.flaticon.com/512/2232/2232688.png']);
-
 const isHost = computed(() => role.value === 'A');
+
 
 const getParamsFromUrl = () => {
     const params = new URLSearchParams(window.location.search);
@@ -246,13 +271,55 @@ onMounted(async () => {
     //const myRequestedRole = getRoleFromUrl();
     const { role: roleParam, room: roomID } = getParamsFromUrl();
 
+    if (roomID && roleParam) {
+        currentRoomID.value = roomID;
+        role.value = roleParam.toUpperCase();
 
+        let userName = '';
 
-
+        // 老師身分不需要輸入名字
+        if (role.value === 'A') {
+            userName = '老師';
+            initConnection('A', roomID, userName);
+        }
+        // 學生身分 (role=B) 彈出輸入名字視窗
+        else if (role.value === 'B') {
+            try {
+                const { value: name } = await ElMessageBox.prompt('請輸入名字', '歡迎加入遊戲', {
+                    confirmButtonText: '進入遊戲',
+                    cancelButtonText: '匿名進入',
+                    inputPlaceholder: '例如：王小明',
+                    inputPattern: /\S+/,
+                    inputErrorMessage: '名字不能為空',
+                    // 增加這個可以防止學生按 Esc 或點擊外部關閉視窗而沒進到房間
+                    closeOnClickModal: false,
+                    closeOnPressEscape: false,
+                    showClose: false
+                });
+                userName = name || "匿名玩家";
+            } catch {
+                userName = "匿名玩家";
+            }
+            // 學生輸入完後正式連線
+            initConnection('B', roomID, userName);
+        }
+    } else {
+        // 網址沒參數，代表是首頁進來的老師，留在 LOBBY-CARD 畫面等待 joinAsTeacher 被觸發
+        console.log("留在初始大廳等待老師創建房間...");
+    }
+    /*
     let requestedRole = (roleParam || '').toUpperCase();
     if (requestedRole !== 'A' && requestedRole !== 'B') requestedRole = null;
 
-    let userName = '';
+    const upperRole = roleParam ? roleParam.toUpperCase() : null;
+
+    if (upperRole === 'A') {
+        requestedRole = 'A';
+    } else if (upperRole === 'B') {
+        requestedRole = 'B';
+    }
+
+    let userName = requestedRole === 'A' ? '老師' : '';
     try {
         if (requestedRole === 'B') {
             const { value: name } = await ElMessageBox.prompt('請輸入名字', '歡迎加入遊戲', {
@@ -263,25 +330,13 @@ onMounted(async () => {
                 inputErrorMessage: '名字不能為空'
             });
             userName = name || "匿名玩家";
-        } else if (requestedRole === 'A') {
-            userName = '老師';
-        } else {
-            userName = '訪客';
         }
+        initConnection(requestedRole, roomParam, userName);
     } catch {
         userName = "匿名玩家";
-    }
+    }*/
 
-
-    const upperRole = roleParam ? roleParam.toUpperCase() : null;
-
-    if (upperRole === 'A') {
-        requestedRole = 'A';
-    } else if (upperRole === 'B') {
-        requestedRole = 'B';
-    }
-
-    socket.emit('join_with_role', { requestedRole, roomID, userName });
+    //socket.emit('join_with_role', { requestedRole, roomID, userName });
 
     socket.on('assigned_role', (assignedRole) => {
         role.value = assignedRole;
@@ -339,6 +394,35 @@ const playCard = (card) => {
         role: role.value,
         card: { ...card } // 包含 id, img, noun, displayMode 等
     });
+};
+
+// 老師手動加入房間
+const joinAsTeacher = () => {
+    if (!inputRoomID.value) return ElMessage.error('請輸入房間號碼');
+
+    // 1. 設定本地房號與身份
+    currentRoomID.value = inputRoomID.value;
+    role.value = 'A';
+
+    // 2. 自動修改 URL (不跳頁)
+    const newUrl = `${window.location.origin}${window.location.pathname}?role=A&room=${inputRoomID.value}`;
+    window.history.pushState({ path: newUrl }, '', newUrl);
+
+    // 3. 執行原有的連線邏輯
+    initConnection('A', inputRoomID.value, '老師');
+};
+
+// 複製連結給學生
+const copyStudentLink = () => {
+    const studentUrl = `${window.location.origin}${window.location.pathname}?role=B&room=${currentRoomID.value}`;
+    navigator.clipboard.writeText(studentUrl).then(() => {
+        ElMessage.success(`連結已複製！請發送給學生：${studentUrl}`);
+    });
+};
+
+// 封裝原本的連線邏輯
+const initConnection = (requestedRole, roomID, userName) => {
+    socket.emit('join_with_role', { requestedRole, roomID, userName });
 };
 
 const handleRestart = () => {
@@ -555,6 +639,18 @@ const removeRow = (index) => {
 .student-tag {
     background: rgba(103, 194, 58, 0.8);
     /* 學生用綠色系 */
+}
+
+.lobby-card {
+    max-width: 400px;
+    margin: 100px auto;
+    text-align: center;
+    padding: 20px;
+}
+
+.title-group {
+    display: flex;
+    align-items: center;
 }
 </style>
 
