@@ -71,6 +71,10 @@ io.on('connection', (socket) => {
             name: userName
         });
         socket.emit('assigned_role', finalRole);
+
+        // 廣播最新名單給該房間所有人
+        io.to(roomID).emit('update_player_list', rooms[roomID].players);
+
         console.log(`房間 [${roomID}] 玩家 ${socket.id} 身份: ${finalRole}`);
     });
 
@@ -196,10 +200,29 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         const roomID = socket.roomID;
+        const socketId = socket.id;
+
+        console.log(`玩家斷線: ${socketId} (來自房間: ${roomID || '無房間'})`);
+
         if (rooms[roomID]) {
-            rooms[roomID].players = rooms[roomID].players.filter(p => p.id !== socket.id);
+            /*rooms[roomID].players = rooms[roomID].players.filter(p => p.id !== socket.id);
             // 如果房間沒人了，可以刪除節省記憶體
-            if (rooms[roomID].players.length === 0) delete rooms[roomID];
+            if (rooms[roomID].players.length === 0) delete rooms[roomID];*/
+            // 1. 從該房間的玩家陣列中過濾掉斷線的人
+            rooms[roomID].players = rooms[roomID].players.filter(p => p.id !== socketId);
+
+            // 2. 檢查房間是否還有剩下的人
+            if (rooms[roomID].players.length === 0) {
+                // 如果房間空了，刪除房間以釋放記憶體
+                console.log(`房間 [${roomID}] 已空，正式移除該房間。`);
+                delete rooms[roomID];
+            } else {
+                // 3. 關鍵：如果還有玩家在，廣播「最新的」在線名單給該房間剩餘的所有人
+                // 這樣前端的 onlinePlayers 就會即時更新，移除掉那位同學
+                io.to(roomID).emit('update_player_list', rooms[roomID].players);
+
+                console.log(`房間 [${roomID}] 更新名單，剩餘人數: ${rooms[roomID].players.length}`);
+            }
         }
     });
 });

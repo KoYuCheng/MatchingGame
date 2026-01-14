@@ -44,6 +44,19 @@
                         </div>
                         <el-button type="primary" size="large" @click="isEditing = true" icon="Edit">編輯教材內容</el-button>
                         <el-button type="success" size="large" @click="requestStart" icon="CaretRight">開始遊戲</el-button>
+                        <el-divider content-position="left">
+                            目前在線學生 ({{ studentCount }} 位)
+                        </el-divider>
+
+                        <div class="player-tags-container">
+                            <transition-group name="el-fade-in-linear">
+                                <el-tag v-for="player in onlinePlayers.filter(p => p.role === 'B')" :key="player.id"
+                                    class="player-tag" effect="plain" round type="success" style="margin: 5px;">
+                                    {{ player.name }}
+                                </el-tag>
+                            </transition-group>
+                            <el-empty v-if="studentCount === 0" :image-size="60" description="尚無學生加入" />
+                        </div>
                     </div>
                     <el-empty v-else description="等待老師調整教材中..." />
                 </div>
@@ -210,6 +223,8 @@ const myHand = ref([]);
 const table = ref({ quantifierCard: null, nounCard: null });
 const studentDisplayMode = ref('image'); // 預設顯示圖片
 
+const onlinePlayers = ref([]); //在線玩家名單
+
 const localGameData = ref([
     { id: 1, quantifier: "一個", noun: "小孩", img: "/shinchun.webp" },
     { id: 2, quantifier: "兩隻", noun: "貓", img: "https://cdn-icons-png.flaticon.com/128/1998/1998592.png" },
@@ -337,6 +352,9 @@ onMounted(async () => {
     }*/
 
     //socket.emit('join_with_role', { requestedRole, roomID, userName });
+    socket.on('update_player_list', (list) => {
+        onlinePlayers.value = list;
+    });
 
     socket.on('assigned_role', (assignedRole) => {
         role.value = assignedRole;
@@ -353,11 +371,11 @@ onMounted(async () => {
     socket.on('match_success', async () => {
         const q = table.value.quantifierCard?.text || '';
         const n = table.value.nounCard?.noun || '';
-        const solver = table.value.nounCard?.playerName || '某個同學';
+        const StudentName = table.value.nounCard?.playerName || '某個同學';
         const fullAnswer = `${q}${n}`;
 
         await ElMessageBox.alert(
-            `${solver} 配對成功！正確答案就是：【${fullAnswer}】`,
+            `${StudentName} 配對成功！正確答案就是：【${fullAnswer}】`,
             '配對成功',
             {
                 type: 'success',
@@ -380,6 +398,11 @@ onMounted(async () => {
         table.value = { quantifierCard: null, nounCard: null };
         ElMessage.warning('老師已重置遊戲');
     });
+});
+
+// 計算學生數量（排除老師）
+const studentCount = computed(() => {
+    return onlinePlayers.value.filter(p => p.role === 'B').length;
 });
 
 const requestStart = () => {
